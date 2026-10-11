@@ -189,6 +189,12 @@ public class SeasonLinker
                     continue;
                 }
 
+                if (!File.Exists(item.Path) && !Directory.Exists(item.Path))
+                {
+                    // Moved or deleted since the last library scan: nothing to link to.
+                    continue;
+                }
+
                 // A mixed library that keeps its movies and shows in subfolders gets its links sorted the same way.
                 var destination = library.CollectionType == null
                     ? SubfolderFor(folder, item.GetBaseItemKind() == BaseItemKind.Series ? ShowFolderNames : MovieFolderNames)
