@@ -11,6 +11,8 @@
                 <h2 class="sectionTitle">TIS</h2>
                 <p>Make a library for each season's folder under <b>Dashboard → Libraries</b>, then add it below with the dates it should be shown.
                     Outside those dates the library is hidden from everyone. Libraries that are not listed here are left alone.</p>
+                <p>A season does not need its own folder: leave <b>Library</b> on <i>Make a library for this season</i>, give it a name and tags,
+                    and a library holding only the tagged items is made for it.</p>
                 <p>To show a movie or show from another library in a season, give the season one or more tags below and add any of them to the item
                     (<b>⋮ → Edit metadata → Tags</b>). It is linked into the season's folder at the next check, not copied.</p>
 
@@ -55,7 +57,7 @@
                 }
 
                 function addRow(season) {
-                    var libraryOptions = '<option value="">Choose a library</option>' + libraries.map(function (l) {
+                    var libraryOptions = '<option value="">Make a library for this season</option>' + libraries.map(function (l) {
                         return '<option value="' + escapeHtml(l.ItemId) + '">' + escapeHtml(l.Name) + '</option>';
                     }).join('');
 
@@ -69,7 +71,8 @@
                     row.style.cssText = 'border:1px solid rgba(128,128,128,.4);border-radius:6px;padding:1em;margin-bottom:1em;';
                     row.innerHTML =
                         '<div class="inputContainer"><input is="emby-input" type="text" data-key="Name" label="Season name" placeholder="Halloween" /></div>' +
-                        '<div class="selectContainer"><select is="emby-select" data-key="LibraryId" label="Library">' + libraryOptions + '</select></div>' +
+                        '<div class="selectContainer"><select is="emby-select" data-key="LibraryId" label="Library">' + libraryOptions + '</select>' +
+                            '<div class="fieldDescription">Pick one of your libraries, or have one made that is named after the season and holds only the tagged items.</div></div>' +
                         '<div class="inputContainer"><input is="emby-input" type="text" data-key="Tag" label="Tags (optional)" placeholder="halloween, spooky, horror" />' +
                             '<div class="fieldDescription">Separate several tags with commas. Movies and shows in other libraries with any of these tags are linked into this library. Leave empty to only show what is in the folder.</div></div>' +
                         '<div style="display:flex;flex-wrap:wrap;gap:1em;">' +
@@ -100,7 +103,7 @@
                     list.querySelectorAll('.tisSeason').forEach(function (row) {
                         var get = function (key) { return row.querySelector('[data-key="' + key + '"]').value; };
                         var libraryId = get('LibraryId');
-                        if (!libraryId) {
+                        if (!libraryId && !get('Name').trim()) {
                             return;
                         }
 
@@ -121,12 +124,17 @@
                     addRow({});
                 });
 
-                page.addEventListener('pageshow', function () {
-                    Dashboard.showLoadingMsg();
-                    Promise.all([ApiClient.getVirtualFolders(), ApiClient.getPluginConfiguration(pluginId)]).then(function (results) {
+                function load() {
+                    return Promise.all([ApiClient.getVirtualFolders(), ApiClient.getPluginConfiguration(pluginId)]).then(function (results) {
                         libraries = results[0] || [];
                         list.innerHTML = '';
                         (results[1].Seasons || []).forEach(addRow);
+                    });
+                }
+
+                page.addEventListener('pageshow', function () {
+                    Dashboard.showLoadingMsg();
+                    load().then(function () {
                         Dashboard.hideLoadingMsg();
                     });
                 });
@@ -139,6 +147,8 @@
                         return ApiClient.updatePluginConfiguration(pluginId, config);
                     }).then(function (result) {
                         Dashboard.processPluginConfigurationUpdateResult(result);
+                        // Show the libraries that were just made for seasons that had none.
+                        return load();
                     });
                     return false;
                 });

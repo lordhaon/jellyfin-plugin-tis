@@ -5,8 +5,10 @@ using System.Linq;
 using System.Text.Json;
 using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.Tis.Configuration;
+using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Model.Configuration;
 using MediaBrowser.Model.Entities;
 using Microsoft.Extensions.Logging;
 
@@ -21,17 +23,88 @@ public class SeasonLinker
     private static readonly string[] ShowFolderNames = { "Shows", "TV Shows", "TV", "Series" };
 
     private readonly ILibraryManager _libraryManager;
+    private readonly IApplicationPaths _applicationPaths;
     private readonly ILogger<SeasonLinker> _logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SeasonLinker"/> class.
     /// </summary>
     /// <param name="libraryManager">Library manager.</param>
+    /// <param name="applicationPaths">Application paths.</param>
     /// <param name="logger">Logger.</param>
-    public SeasonLinker(ILibraryManager libraryManager, ILogger<SeasonLinker> logger)
+    public SeasonLinker(ILibraryManager libraryManager, IApplicationPaths applicationPaths, ILogger<SeasonLinker> logger)
     {
         _libraryManager = libraryManager;
+        _applicationPaths = applicationPaths;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Makes a library for each season that has none. Its folder lives in Jellyfin's data folder and only ever holds links.
+    /// </summary>
+    /// <param name="seasons">The configured seasons.</param>
+    /// <returns>True when a library was made.</returns>
+    public bool CreateMissingLibraries(IReadOnlyCollection<Season> seasons)
+    {
+        var created = false;
+        var adopted = false;
+        var root = Path.Combine(_applicationPaths.DataPath, "tis");
+        foreach (var season in seasons.Where(s => string.IsNullOrWhiteSpace(s.LibraryId) && !string.IsNullOrWhiteSpace(s.Name)))
+        {
+            var name = season.Name.Trim();
+            try
+            {
+                var existing = FindLibrary(name);
+                if (existing != null && !(existing.Locations ?? Array.Empty<string>()).Any(l => IsUnder(l, root)))
+                {
+                    // Never take over one of the user's own libraries just because the names match.
+                    _logger.LogWarning("TIS: season '{Season}' has no library, and a library with that name already exists. Pick it on the settings page or rename the season.", name);
+                    continue;
+                }
+
+                if (existing == null)
+                {
+                    var folder = Path.Combine(root, string.Join("_", name.Split(Path.GetInvalidFileNameChars())));
+                    Directory.CreateDirectory(Path.Combine(folder, MovieFolderNames[0]));
+                    Directory.CreateDirectory(Path.Combine(folder, ShowFolderNames[0]));
+
+                    // Mixed content, like a season folder with Movies and Shows in it. Made hidden when out of season,
+                    // because the library can't be switched until Jellyfin has scanned it in.
+                    var options = new LibraryOptions
+                    {
+                        Enabled = season.IsActive(DateTime.Now),
+                        PathInfos = new[] { new MediaPathInfo(folder) }
+                    };
+                    _libraryManager.AddVirtualFolder(name, null, options, false).GetAwaiter().GetResult();
+                    existing = FindLibrary(name);
+                    created = true;
+                    _logger.LogInformation("TIS: made library '{Library}' at '{Folder}'", name, folder);
+                }
+
+                if (existing != null)
+                {
+                    season.LibraryId = existing.ItemId;
+                    adopted = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "TIS: could not make a library for season '{Season}'", name);
+            }
+        }
+
+        if (adopted)
+        {
+            // Remember the new libraries. This does not raise ConfigurationChanged.
+            Plugin.Instance?.SaveConfiguration();
+        }
+
+        return created;
+    }
+
+    private VirtualFolderInfo? FindLibrary(string name)
+    {
+        return _libraryManager.GetVirtualFolders().FirstOrDefault(l => string.Equals(l.Name, name, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

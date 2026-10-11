@@ -48,7 +48,8 @@ public class SeasonSwitcher
         lock (_lock)
         {
             // Also runs with no seasons left, so links from removed seasons are cleaned up.
-            linksChanged = _linker.Sync(seasons);
+            linksChanged = _linker.CreateMissingLibraries(seasons);
+            linksChanged |= _linker.Sync(seasons);
 
             // A library can have more than one season; it is shown while any of them is active.
             foreach (var group in seasons.GroupBy(s => s.LibraryId, StringComparer.OrdinalIgnoreCase))

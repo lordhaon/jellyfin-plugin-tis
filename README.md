@@ -30,7 +30,7 @@ To install without a repository, copy `Jellyfin.Plugin.Tis.dll` into `<jellyfin 
 | Field | What to enter |
 |---|---|
 | Season name | A label for yourself, e.g. `Halloween` |
-| Library | The library to show and hide |
+| Library | The library to show and hide, or *Make a library for this season* |
 | Tags (optional) | One or more tags separated by commas, such as `halloween, spooky, horror`. See below. |
 | Shown from | The first day the library is shown |
 | Until the end of | The last day the library is shown |
@@ -48,6 +48,14 @@ Give a season one or more **Tags** (separated by commas), then add any of them t
 - Jellyfin needs write access to the season's folder, and that folder must be reachable under the same paths as the rest of your media (the same Docker mount).
 - The plugin only removes links it made itself. Anything you put in a season folder by hand is left alone.
 - While its season is showing, a linked movie appears twice in search, once per library.
+
+## Seasons without a folder
+
+A season does not need a folder or library of its own. Leave **Library** on *Make a library for this season*, give the season a name, tags and dates, and save. The plugin makes a mixed-content library named after the season and fills it with links to the tagged items.
+
+- The library's folder is `<jellyfin data>/data/tis/<season name>`, with `Movies` and `Shows` subfolders. It only ever holds links, so it takes no space.
+- A library is not made if one of your own libraries already has that name. Pick that library, or rename the season.
+- Removing the season empties the library but does not delete it. Delete it under **Dashboard → Libraries**.
 
 ## How it works
 

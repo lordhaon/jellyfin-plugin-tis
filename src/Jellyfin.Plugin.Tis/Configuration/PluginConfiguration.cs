@@ -25,7 +25,7 @@ public class Season
     public string Name { get; set; } = string.Empty;
 
     /// <summary>
-    /// Gets or sets the id of the library to show and hide.
+    /// Gets or sets the id of the library to show and hide. Empty to have a library made for the season, holding only linked items.
     /// </summary>
     public string LibraryId { get; set; } = string.Empty;
 
