@@ -30,7 +30,8 @@ public class Season
     public string LibraryId { get; set; } = string.Empty;
 
     /// <summary>
-    /// Gets or sets a tag. Movies and shows in other libraries that carry it are linked into this library's folder. Empty for none.
+    /// Gets or sets one or more tags, separated by commas. Movies and shows in other libraries that carry any of them
+    /// are linked into this library's folder. Empty for none.
     /// </summary>
     public string Tag { get; set; } = string.Empty;
 

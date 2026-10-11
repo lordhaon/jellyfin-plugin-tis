@@ -31,7 +31,7 @@ To install without a repository, copy `Jellyfin.Plugin.Tis.dll` into `<jellyfin 
 |---|---|
 | Season name | A label for yourself, e.g. `Halloween` |
 | Library | The library to show and hide |
-| Tag (optional) | A tag such as `Halloween`. See below. |
+| Tags (optional) | One or more tags separated by commas, such as `halloween, spooky, horror`. See below. |
 | Shown from | The first day the library is shown |
 | Until the end of | The last day the library is shown |
 
@@ -39,7 +39,7 @@ To install without a repository, copy `Jellyfin.Plugin.Tis.dll` into `<jellyfin 
 
 ## Showing movies from other libraries
 
-Give a season a **Tag**, then add that tag to any movie or show in another library (**⋮ → Edit metadata → Tags**). At the next check the plugin creates a symbolic link to it inside the season's folder, so it shows up in the seasonal library while the file stays where it is. Remove the tag and the link is removed.
+Give a season one or more **Tags** (separated by commas), then add any of them to a movie or show in another library (**⋮ → Edit metadata → Tags**). At the next check the plugin creates a symbolic link to it inside the season's folder, so it shows up in the seasonal library while the file stays where it is. Remove the tag and the link is removed. These are Jellyfin tags, not genres: a movie in the Horror genre only matches `horror` if it also has that tag.
 
 - A new tag is picked up just after midnight, or straight away if you run **Dashboard → Scheduled Tasks → TIS → Update seasonal libraries** or press Save on the settings page.
 - Movies are linked into a Movies library and shows into a Shows library. For both, make two libraries with the same tag and dates.

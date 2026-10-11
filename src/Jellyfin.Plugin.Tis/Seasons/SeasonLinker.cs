@@ -49,8 +49,7 @@ public class SeasonLinker
 
         // Only links listed here are ever deleted, so anything put in a season folder by hand is safe.
         var record = LoadRecord(recordPath);
-        var tagged = seasons.Where(s => !string.IsNullOrWhiteSpace(s.Tag)).ToList();
-        if (tagged.Count == 0 && record.Count == 0)
+        if (record.Count == 0 && seasons.All(s => TagsOf(s).Length == 0))
         {
             return false;
         }
@@ -74,7 +73,7 @@ public class SeasonLinker
             }
 
             seasonFolders.AddRange(locations.Select(TrimSeparator));
-            if (!string.IsNullOrWhiteSpace(season.Tag))
+            if (TagsOf(season).Length > 0)
             {
                 targets.Add((season, library, TrimSeparator(locations[0])));
             }
@@ -83,14 +82,15 @@ public class SeasonLinker
         var wanted = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var (season, library, folder) in targets)
         {
-            var query = new InternalItemsQuery
+            // One query per tag, so an item needs only one of them.
+            var items = TagsOf(season).SelectMany(tag => _libraryManager.GetItemList(new InternalItemsQuery
             {
                 IncludeItemTypes = KindsFor(library),
-                Tags = new[] { season.Tag.Trim() },
+                Tags = new[] { tag },
                 Recursive = true
-            };
+            }));
 
-            foreach (var item in _libraryManager.GetItemList(query))
+            foreach (var item in items)
             {
                 var source = SourceFor(item);
                 if (source == null || seasonFolders.Any(f => IsUnder(source, f)))
@@ -158,6 +158,13 @@ public class SeasonLinker
 
         SaveRecord(recordPath, record);
         return changed;
+    }
+
+    private static string[] TagsOf(Season season)
+    {
+        return season.Tag.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private static string SubfolderFor(string folder, string[] names)

@@ -11,7 +11,7 @@
                 <h2 class="sectionTitle">TIS</h2>
                 <p>Make a library for each season's folder under <b>Dashboard → Libraries</b>, then add it below with the dates it should be shown.
                     Outside those dates the library is hidden from everyone. Libraries that are not listed here are left alone.</p>
-                <p>To show a movie or show from another library in a season, give the season a tag below and add that tag to the item
+                <p>To show a movie or show from another library in a season, give the season one or more tags below and add any of them to the item
                     (<b>⋮ → Edit metadata → Tags</b>). It is linked into the season's folder at the next check, not copied.</p>
 
                 <form id="TisConfigForm">
@@ -70,8 +70,8 @@
                     row.innerHTML =
                         '<div class="inputContainer"><input is="emby-input" type="text" data-key="Name" label="Season name" placeholder="Halloween" /></div>' +
                         '<div class="selectContainer"><select is="emby-select" data-key="LibraryId" label="Library">' + libraryOptions + '</select></div>' +
-                        '<div class="inputContainer"><input is="emby-input" type="text" data-key="Tag" label="Tag (optional)" placeholder="Halloween" />' +
-                            '<div class="fieldDescription">Movies and shows in other libraries with this tag are linked into this library. Leave empty to only show what is in the folder.</div></div>' +
+                        '<div class="inputContainer"><input is="emby-input" type="text" data-key="Tag" label="Tags (optional)" placeholder="halloween, spooky, horror" />' +
+                            '<div class="fieldDescription">Separate several tags with commas. Movies and shows in other libraries with any of these tags are linked into this library. Leave empty to only show what is in the folder.</div></div>' +
                         '<div style="display:flex;flex-wrap:wrap;gap:1em;">' +
                             monthSelect('StartMonth', 'Shown from') + dayInput('StartDay', 'Day') +
                             monthSelect('EndMonth', 'Until the end of') + dayInput('EndDay', 'Day') +
