@@ -11,6 +11,8 @@
                 <h2 class="sectionTitle">TIS</h2>
                 <p>Make a library for each season's folder under <b>Dashboard → Libraries</b>, then add it below with the dates it should be shown.
                     Outside those dates the library is hidden from everyone. Libraries that are not listed here are left alone.</p>
+                <p>To show a movie or show from another library in a season, give the season a tag below and add that tag to the item
+                    (<b>⋮ → Edit metadata → Tags</b>). It is linked into the season's folder at the next check, not copied.</p>
 
                 <form id="TisConfigForm">
                     <div id="TisSeasons"></div>
@@ -23,7 +25,7 @@
                             <span>Save</span>
                         </button>
                     </div>
-                    <div class="fieldDescription" style="margin-top:1em;">Saving applies the dates straight away. After that they are checked just after midnight and when the server starts.</div>
+                    <div class="fieldDescription" style="margin-top:1em;">Saving applies the dates and tags straight away. After that they are checked just after midnight and when the server starts.</div>
                 </form>
             </div>
         </div>
@@ -68,6 +70,8 @@
                     row.innerHTML =
                         '<div class="inputContainer"><input is="emby-input" type="text" data-key="Name" label="Season name" placeholder="Halloween" /></div>' +
                         '<div class="selectContainer"><select is="emby-select" data-key="LibraryId" label="Library">' + libraryOptions + '</select></div>' +
+                        '<div class="inputContainer"><input is="emby-input" type="text" data-key="Tag" label="Tag (optional)" placeholder="Halloween" />' +
+                            '<div class="fieldDescription">Movies and shows in other libraries with this tag are linked into this library. Leave empty to only show what is in the folder.</div></div>' +
                         '<div style="display:flex;flex-wrap:wrap;gap:1em;">' +
                             monthSelect('StartMonth', 'Shown from') + dayInput('StartDay', 'Day') +
                             monthSelect('EndMonth', 'Until the end of') + dayInput('EndDay', 'Day') +
@@ -76,6 +80,7 @@
 
                     row.querySelector('[data-key="Name"]').value = season.Name || '';
                     row.querySelector('[data-key="LibraryId"]').value = season.LibraryId || '';
+                    row.querySelector('[data-key="Tag"]').value = season.Tag || '';
                     row.querySelector('[data-key="StartMonth"]').value = season.StartMonth || 1;
                     row.querySelector('[data-key="StartDay"]').value = season.StartDay || 1;
                     row.querySelector('[data-key="EndMonth"]').value = season.EndMonth || 12;
@@ -102,6 +107,7 @@
                         seasons.push({
                             Name: get('Name').trim(),
                             LibraryId: libraryId,
+                            Tag: get('Tag').trim(),
                             StartMonth: parseInt(get('StartMonth'), 10),
                             StartDay: day(get('StartDay')),
                             EndMonth: parseInt(get('EndMonth'), 10),

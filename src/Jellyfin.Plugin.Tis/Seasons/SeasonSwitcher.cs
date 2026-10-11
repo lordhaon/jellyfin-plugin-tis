@@ -12,6 +12,7 @@ namespace Jellyfin.Plugin.Tis.Seasons;
 public class SeasonSwitcher
 {
     private readonly ILibraryManager _libraryManager;
+    private readonly SeasonLinker _linker;
     private readonly ILogger<SeasonSwitcher> _logger;
     private readonly object _lock = new object();
 
@@ -19,20 +20,22 @@ public class SeasonSwitcher
     /// Initializes a new instance of the <see cref="SeasonSwitcher"/> class.
     /// </summary>
     /// <param name="libraryManager">Library manager.</param>
+    /// <param name="linker">Season linker.</param>
     /// <param name="logger">Logger.</param>
-    public SeasonSwitcher(ILibraryManager libraryManager, ILogger<SeasonSwitcher> logger)
+    public SeasonSwitcher(ILibraryManager libraryManager, SeasonLinker linker, ILogger<SeasonSwitcher> logger)
     {
         _libraryManager = libraryManager;
+        _linker = linker;
         _logger = logger;
     }
 
     /// <summary>
-    /// Sets each configured library's "Enable the library" option to match today's date.
+    /// Updates the tag links, then sets each configured library's "Enable the library" option to match today's date.
     /// </summary>
     public void Apply()
     {
         var seasons = Plugin.Instance?.Configuration.Seasons;
-        if (seasons == null || seasons.Length == 0)
+        if (seasons == null)
         {
             return;
         }
@@ -40,9 +43,13 @@ public class SeasonSwitcher
         // The server's local time, so the container's TZ decides when midnight is.
         var today = DateTime.Now;
         var shownAny = false;
+        bool linksChanged;
 
         lock (_lock)
         {
+            // Also runs with no seasons left, so links from removed seasons are cleaned up.
+            linksChanged = _linker.Sync(seasons);
+
             // A library can have more than one season; it is shown while any of them is active.
             foreach (var group in seasons.GroupBy(s => s.LibraryId, StringComparer.OrdinalIgnoreCase))
             {
@@ -66,9 +73,9 @@ public class SeasonSwitcher
             }
         }
 
-        if (shownAny)
+        if (shownAny || linksChanged)
         {
-            // Pick up anything added to the folder while the library was hidden.
+            // Pick up new and removed links, and anything added to the folder while the library was hidden.
             _libraryManager.QueueLibraryScan();
         }
     }

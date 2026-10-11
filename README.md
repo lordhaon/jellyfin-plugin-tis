@@ -5,6 +5,7 @@ A Jellyfin plugin that shows a library only during the part of the year it belon
 - Works in every Jellyfin app, because it switches the library's own **Enable the library** option on the server
 - Each season has a start and end date, and can run over New Year (e.g. December 1 to January 5)
 - A library can have more than one season
+- Tag a movie or show in another library and it also appears in the seasonal library, without being copied
 - Nothing is moved, deleted or rescanned when a library is hidden. Watched status and metadata are kept.
 
 ## Requirements
@@ -30,10 +31,22 @@ To install without a repository, copy `Jellyfin.Plugin.Tis.dll` into `<jellyfin 
 |---|---|
 | Season name | A label for yourself, e.g. `Halloween` |
 | Library | The library to show and hide |
+| Tag (optional) | A tag such as `Halloween`. See below. |
 | Shown from | The first day the library is shown |
 | Until the end of | The last day the library is shown |
 
 4. **Save**. The dates are applied straight away, then checked just after midnight each day and when the server starts.
+
+## Showing movies from other libraries
+
+Give a season a **Tag**, then add that tag to any movie or show in another library (**⋮ → Edit metadata → Tags**). At the next check the plugin creates a symbolic link to it inside the season's folder, so it shows up in the seasonal library while the file stays where it is. Remove the tag and the link is removed.
+
+- A new tag is picked up just after midnight, or straight away if you run **Dashboard → Scheduled Tasks → TIS → Update seasonal libraries** or press Save on the settings page.
+- Movies are linked into a Movies library and shows into a Shows library. For both, make two libraries with the same tag and dates.
+- An item can carry several season tags.
+- Jellyfin needs write access to the season's folder, and that folder must be reachable under the same paths as the rest of your media (the same Docker mount).
+- The plugin only removes links it made itself. Anything you put in a season folder by hand is left alone.
+- While its season is showing, a linked movie appears twice in search, once per library.
 
 ## How it works
 
