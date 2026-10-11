@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Xml.Linq;
 using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.Tis.Configuration;
 using MediaBrowser.Common.Configuration;
@@ -15,7 +17,7 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Plugin.Tis.Seasons;
 
 /// <summary>
-/// Links movies and shows that carry a season's tag into that season's library folder.
+/// Links movies and shows that carry one of a season's tags into that season's library folder.
 /// </summary>
 public class SeasonLinker
 {
@@ -108,23 +110,40 @@ public class SeasonLinker
     }
 
     /// <summary>
-    /// Creates the links that are missing and removes the ones whose item lost its tag.
+    /// Builds a folder in the season library for each tagged item, and removes the folders whose item lost its tag.
+    /// The folder holds links to the item's files, plus an .nfo and artwork so the copy gets the same metadata as the original.
     /// </summary>
     /// <param name="seasons">The configured seasons.</param>
-    /// <returns>True when a link was created or removed.</returns>
+    /// <returns>True when anything was created, changed or removed.</returns>
     public bool Sync(IReadOnlyCollection<Season> seasons)
     {
-        var recordPath = GetRecordPath();
-        if (recordPath == null)
+        var configFolder = Path.GetDirectoryName(Plugin.Instance?.ConfigurationFilePath);
+        if (string.IsNullOrEmpty(configFolder))
         {
             return false;
         }
 
-        // Only links listed here are ever deleted, so anything put in a season folder by hand is safe.
+        // Only folders listed here are ever deleted, so anything put in a season folder by hand is safe.
+        var recordPath = Path.Combine(configFolder, "Jellyfin.Plugin.Tis.folders.json");
+        var oldRecordPath = Path.Combine(configFolder, "Jellyfin.Plugin.Tis.links.json");
         var record = LoadRecord(recordPath);
-        if (record.Count == 0 && seasons.All(s => TagsOf(s).Length == 0))
+        var oldLinks = LoadRecord(oldRecordPath);
+        if (record.Count == 0 && oldLinks.Count == 0 && seasons.All(s => TagsOf(s).Length == 0))
         {
             return false;
+        }
+
+        var changed = false;
+
+        // Versions before 1.3 linked an item's whole folder. Those links are replaced by the folders made below.
+        if (oldLinks.Count > 0)
+        {
+            foreach (var link in oldLinks)
+            {
+                changed |= RemoveLink(link);
+            }
+
+            SaveRecord(oldRecordPath, new HashSet<string>());
         }
 
         // The media folders come from the library's settings. CollectionFolder.PhysicalLocations is no use here:
@@ -152,7 +171,7 @@ public class SeasonLinker
             }
         }
 
-        var wanted = new Dictionary<string, string>(StringComparer.Ordinal);
+        var wanted = new Dictionary<string, BaseItem>(StringComparer.Ordinal);
         foreach (var (season, library, folder) in targets)
         {
             // One query per tag, so an item needs only one of them.
@@ -165,8 +184,7 @@ public class SeasonLinker
 
             foreach (var item in items)
             {
-                var source = SourceFor(item);
-                if (source == null || seasonFolders.Any(f => IsUnder(source, f)))
+                if (string.IsNullOrEmpty(item.Path) || seasonFolders.Any(f => IsUnder(item.Path, f)))
                 {
                     continue;
                 }
@@ -176,61 +194,203 @@ public class SeasonLinker
                     ? SubfolderFor(folder, item.GetBaseItemKind() == BaseItemKind.Series ? ShowFolderNames : MovieFolderNames)
                     : folder;
 
-                wanted[Path.Combine(destination, Path.GetFileName(source))] = source;
+                wanted[Path.Combine(destination, FolderNameFor(item))] = item;
             }
         }
 
-        var changed = false;
-
-        foreach (var link in record.Where(l => !wanted.ContainsKey(l)).ToList())
+        foreach (var folder in record.Where(f => !wanted.ContainsKey(f)).ToList())
         {
-            changed |= RemoveLink(link);
-            record.Remove(link);
+            changed |= RemoveFolder(folder);
+            record.Remove(folder);
         }
 
-        foreach (var (link, source) in wanted)
+        foreach (var (folder, item) in wanted)
         {
-            if (record.Contains(link) && new FileInfo(link).LinkTarget == source)
+            if (!record.Contains(folder) && (File.Exists(folder) || Directory.Exists(folder) || new FileInfo(folder).LinkTarget != null))
             {
-                continue;
-            }
-
-            if (record.Contains(link))
-            {
-                // Ours, but the item moved: replace it.
-                RemoveLink(link);
-                record.Remove(link);
-            }
-
-            if (File.Exists(link) || Directory.Exists(link) || new FileInfo(link).LinkTarget != null)
-            {
-                _logger.LogWarning("TIS: not linking '{Source}' because '{Link}' already exists", source, link);
+                _logger.LogWarning("TIS: not linking '{Item}' because '{Folder}' already exists", item.Name, folder);
                 continue;
             }
 
             try
             {
-                if (Directory.Exists(source))
+                Directory.CreateDirectory(folder);
+                var isNew = record.Add(folder);
+                if (Fill(folder, item))
                 {
-                    Directory.CreateSymbolicLink(link, source);
+                    changed = true;
+                    _logger.LogInformation("TIS: {Action} '{Item}' in '{Folder}'", isNew ? "linked" : "updated", item.Name, folder);
                 }
-                else
-                {
-                    File.CreateSymbolicLink(link, source);
-                }
-
-                record.Add(link);
-                changed = true;
-                _logger.LogInformation("TIS: linked '{Source}' into '{Link}'", source, link);
             }
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
             {
-                _logger.LogWarning(ex, "TIS: could not create link '{Link}'", link);
+                _logger.LogWarning(ex, "TIS: could not link '{Item}' into '{Folder}'", item.Name, folder);
             }
         }
 
         SaveRecord(recordPath, record);
         return changed;
+    }
+
+    private static string FolderNameFor(BaseItem item)
+    {
+        if (Directory.Exists(item.Path))
+        {
+            return Path.GetFileName(TrimSeparator(item.Path));
+        }
+
+        var parent = Path.GetDirectoryName(item.Path);
+        return item.IsInMixedFolder || string.IsNullOrEmpty(parent)
+            ? Path.GetFileNameWithoutExtension(item.Path)
+            : Path.GetFileName(parent);
+    }
+
+    // Brings the folder in line with the item: one link per file or subfolder of the original, artwork, and an .nfo.
+    private static bool Fill(string folder, BaseItem item)
+    {
+        var isSeries = item.GetBaseItemKind() == BaseItemKind.Series;
+        var expected = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        if (Directory.Exists(item.Path))
+        {
+            AddEntries(expected, Directory.EnumerateFileSystemEntries(item.Path));
+        }
+        else if (Path.GetDirectoryName(item.Path) is { Length: > 0 } parent)
+        {
+            if (item.IsInMixedFolder)
+            {
+                // Shares its folder with other movies: take the video and the files named after it (subtitles and so on).
+                var stem = Path.GetFileNameWithoutExtension(item.Path);
+                AddEntries(expected, Directory.EnumerateFiles(parent).Where(f =>
+                    f == item.Path || Path.GetFileName(f).StartsWith(stem + ".", StringComparison.Ordinal)));
+            }
+            else
+            {
+                AddEntries(expected, Directory.EnumerateFileSystemEntries(parent));
+            }
+        }
+
+        var hasNfo = expected.Keys.Any(k => k.EndsWith(".nfo", StringComparison.OrdinalIgnoreCase));
+        AddImage(expected, item, ImageType.Primary, "poster");
+        AddImage(expected, item, ImageType.Backdrop, "backdrop");
+        AddImage(expected, item, ImageType.Logo, "logo");
+
+        var changed = false;
+
+        foreach (var existing in new DirectoryInfo(folder).EnumerateFileSystemInfos())
+        {
+            if (existing.LinkTarget != null && !(expected.TryGetValue(existing.Name, out var target) && target == existing.LinkTarget))
+            {
+                DeleteLink(existing.FullName);
+                changed = true;
+            }
+        }
+
+        foreach (var (name, target) in expected)
+        {
+            var path = Path.Combine(folder, name);
+            if (new FileInfo(path).LinkTarget != null || File.Exists(path) || Directory.Exists(path))
+            {
+                continue;
+            }
+
+            if (Directory.Exists(target))
+            {
+                Directory.CreateSymbolicLink(path, target);
+            }
+            else
+            {
+                File.CreateSymbolicLink(path, target);
+            }
+
+            changed = true;
+        }
+
+        if (!hasNfo)
+        {
+            // Jellyfin reads this before looking anything up, so the copy is matched to the same title as the original.
+            // In a mixed library, tvshow.nfo is also what makes a folder count as a show.
+            var nfoPath = Path.Combine(folder, isSeries ? "tvshow.nfo" : "movie.nfo");
+            var nfo = BuildNfo(item, isSeries);
+            if (!File.Exists(nfoPath) || File.ReadAllText(nfoPath) != nfo)
+            {
+                File.WriteAllText(nfoPath, nfo);
+                changed = true;
+            }
+        }
+
+        return changed;
+    }
+
+    private static void AddEntries(Dictionary<string, string> expected, IEnumerable<string> paths)
+    {
+        foreach (var path in paths)
+        {
+            expected[Path.GetFileName(path)] = path;
+        }
+    }
+
+    private static void AddImage(Dictionary<string, string> expected, BaseItem item, ImageType type, string stem)
+    {
+        if (expected.Keys.Any(k => string.Equals(Path.GetFileNameWithoutExtension(k), stem, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        var image = item.GetImageInfo(type, 0);
+        if (image != null && image.IsLocalFile && File.Exists(image.Path))
+        {
+            expected[stem + Path.GetExtension(image.Path)] = image.Path;
+        }
+    }
+
+    private static string BuildNfo(BaseItem item, bool isSeries)
+    {
+        var root = new XElement(isSeries ? "tvshow" : "movie", new XElement("title", item.Name));
+
+        if (!string.IsNullOrEmpty(item.OriginalTitle))
+        {
+            root.Add(new XElement("originaltitle", item.OriginalTitle));
+        }
+
+        if (item.ProductionYear.HasValue)
+        {
+            root.Add(new XElement("year", item.ProductionYear.Value.ToString(CultureInfo.InvariantCulture)));
+        }
+
+        if (item.PremiereDate.HasValue)
+        {
+            root.Add(new XElement("premiered", item.PremiereDate.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
+        }
+
+        if (!string.IsNullOrEmpty(item.Overview))
+        {
+            root.Add(new XElement("plot", item.Overview));
+        }
+
+        if (!string.IsNullOrEmpty(item.OfficialRating))
+        {
+            root.Add(new XElement("mpaa", item.OfficialRating));
+        }
+
+        foreach (var genre in item.Genres ?? Array.Empty<string>())
+        {
+            root.Add(new XElement("genre", genre));
+        }
+
+        // The same element names Jellyfin's own NFO saver writes: <tmdbid>, <tvdbid>, <imdbid> (<imdb_id> for shows).
+        foreach (var (provider, id) in item.ProviderIds.OrderBy(p => p.Key, StringComparer.Ordinal))
+        {
+            var name = provider.ToLowerInvariant() + "id";
+            if (string.IsNullOrEmpty(id) || !name.All(c => char.IsAsciiLetterOrDigit(c) || c == '_'))
+            {
+                continue;
+            }
+
+            root.Add(new XElement(isSeries && name == "imdbid" ? "imdb_id" : name, id));
+        }
+
+        return new XDocument(new XDeclaration("1.0", "utf-8", "yes"), root).ToString() + Environment.NewLine;
     }
 
     private static string[] TagsOf(Season season)
@@ -263,21 +423,61 @@ public class SeasonLinker
         };
     }
 
-    // A show or a movie in its own folder is linked as the folder; a movie that shares its folder with other movies as the file.
-    private static string? SourceFor(BaseItem item)
+    // Removes a folder made by Fill. Links inside it are unlinked, never followed.
+    private bool RemoveFolder(string folder)
     {
-        if (string.IsNullOrEmpty(item.Path))
+        try
         {
-            return null;
-        }
+            var info = new DirectoryInfo(folder);
+            if (!info.Exists || info.LinkTarget != null)
+            {
+                return false;
+            }
 
-        if (Directory.Exists(item.Path))
+            DeleteContents(info);
+            info.Delete();
+            _logger.LogInformation("TIS: removed '{Folder}'", folder);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
         {
-            return TrimSeparator(item.Path);
+            _logger.LogWarning(ex, "TIS: could not remove '{Folder}'", folder);
+            return false;
         }
+    }
 
-        var parent = Path.GetDirectoryName(item.Path);
-        return item.IsInMixedFolder || string.IsNullOrEmpty(parent) ? item.Path : parent;
+    private static void DeleteContents(DirectoryInfo folder)
+    {
+        foreach (var entry in folder.EnumerateFileSystemInfos())
+        {
+            if (entry.LinkTarget != null)
+            {
+                DeleteLink(entry.FullName);
+            }
+            else if (entry is DirectoryInfo subfolder)
+            {
+                DeleteContents(subfolder);
+                subfolder.Delete();
+            }
+            else
+            {
+                entry.Delete();
+            }
+        }
+    }
+
+    private static void DeleteLink(string link)
+    {
+        try
+        {
+            // Removes the link itself, never what it points at.
+            File.Delete(link);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Windows refuses File.Delete on a link to a folder.
+            Directory.Delete(link);
+        }
     }
 
     private bool RemoveLink(string link)
@@ -290,17 +490,7 @@ public class SeasonLinker
                 return false;
             }
 
-            try
-            {
-                // Removes the link itself, never what it points at.
-                File.Delete(link);
-            }
-            catch (UnauthorizedAccessException)
-            {
-                // Windows refuses File.Delete on a link to a folder.
-                Directory.Delete(link);
-            }
-
+            DeleteLink(link);
             _logger.LogInformation("TIS: removed link '{Link}'", link);
             return true;
         }
@@ -309,12 +499,6 @@ public class SeasonLinker
             _logger.LogWarning(ex, "TIS: could not remove link '{Link}'", link);
             return false;
         }
-    }
-
-    private static string? GetRecordPath()
-    {
-        var configFolder = Path.GetDirectoryName(Plugin.Instance?.ConfigurationFilePath);
-        return string.IsNullOrEmpty(configFolder) ? null : Path.Combine(configFolder, "Jellyfin.Plugin.Tis.links.json");
     }
 
     private HashSet<string> LoadRecord(string path)

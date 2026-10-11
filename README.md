@@ -39,14 +39,17 @@ To install without a repository, copy `Jellyfin.Plugin.Tis.dll` into `<jellyfin 
 
 ## Showing movies from other libraries
 
-Give a season one or more **Tags** (separated by commas), then add any of them to a movie or show in another library (**⋮ → Edit metadata → Tags**). At the next check the plugin creates a symbolic link to it inside the season's folder, so it shows up in the seasonal library while the file stays where it is. Remove the tag and the link is removed. These are Jellyfin tags, not genres: a movie in the Horror genre only matches `horror` if it also has that tag.
+Give a season one or more **Tags** (separated by commas), then add any of them to a movie or show in another library (**⋮ → Edit metadata → Tags**). At the next check the plugin makes a small folder for it inside the season's folder, so it shows up in the seasonal library while the files stay where they are. Remove the tag and the folder is removed.
+
+The folder holds symbolic links to the item's files, links to its poster, backdrop and logo, and a `movie.nfo` or `tvshow.nfo` carrying the original's title and provider ids. Jellyfin reads those before looking anything up, so the copy gets the same match and artwork as the original, and a show is recognised as a show even in a mixed-content library. These are Jellyfin tags, not genres: a movie in the Horror genre only matches `horror` if it also has that tag.
 
 - A new tag is picked up just after midnight, or straight away if you run **Dashboard → Scheduled Tasks → TIS → Update seasonal libraries** or press Save on the settings page.
 - Movies are linked into a Movies library and shows into a Shows library. For both, make two libraries with the same tag and dates.
 - In a mixed-content library, movies are linked into a `Movies` subfolder and shows into a `Shows` subfolder when those exist. Otherwise they go in the library's folder.
 - An item can carry several season tags.
 - Jellyfin needs write access to the season's folder, and that folder must be reachable under the same paths as the rest of your media (the same Docker mount).
-- The plugin only removes links it made itself. Anything you put in a season folder by hand is left alone.
+- The plugin only removes folders it made itself. Anything you put in a season folder by hand is left alone.
+- The season library needs the **Nfo** metadata reader enabled, which is Jellyfin's default.
 - While its season is showing, a linked movie appears twice in search, once per library.
 
 ## Seasons without a folder
