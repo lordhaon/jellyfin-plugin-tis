@@ -9,6 +9,14 @@
     "imageUrl": "",
     "versions": [
       {
+        "version": "1.1.1.0",
+        "changelog": "Fix tagged items being linked into the wrong folder; links made by 1.1.0 are removed automatically",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/lordhaon/jellyfin-plugin-tis/releases/download/v1.1.1/tis_1.1.1.0.zip",
+        "checksum": "208ff1f30c8041b78a939a043eef44b2",
+        "timestamp": "2026-10-11T15:55:49Z"
+      },
+      {
         "version": "1.1.0.0",
         "changelog": "Tag a movie or show in another library to show it in a seasonal library",
         "targetAbi": "12.0.0.0",
