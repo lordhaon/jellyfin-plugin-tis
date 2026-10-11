@@ -43,6 +43,7 @@ Give a season a **Tag**, then add that tag to any movie or show in another libra
 
 - A new tag is picked up just after midnight, or straight away if you run **Dashboard → Scheduled Tasks → TIS → Update seasonal libraries** or press Save on the settings page.
 - Movies are linked into a Movies library and shows into a Shows library. For both, make two libraries with the same tag and dates.
+- In a mixed-content library, movies are linked into a `Movies` subfolder and shows into a `Shows` subfolder when those exist. Otherwise they go in the library's folder.
 - An item can carry several season tags.
 - Jellyfin needs write access to the season's folder, and that folder must be reachable under the same paths as the rest of your media (the same Docker mount).
 - The plugin only removes links it made itself. Anything you put in a season folder by hand is left alone.

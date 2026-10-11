@@ -17,6 +17,9 @@ namespace Jellyfin.Plugin.Tis.Seasons;
 /// </summary>
 public class SeasonLinker
 {
+    private static readonly string[] MovieFolderNames = { "Movies", "Films" };
+    private static readonly string[] ShowFolderNames = { "Shows", "TV Shows", "TV", "Series" };
+
     private readonly ILibraryManager _libraryManager;
     private readonly ILogger<SeasonLinker> _logger;
 
@@ -95,7 +98,12 @@ public class SeasonLinker
                     continue;
                 }
 
-                wanted[Path.Combine(folder, Path.GetFileName(source))] = source;
+                // A mixed library that keeps its movies and shows in subfolders gets its links sorted the same way.
+                var destination = library.CollectionType == null
+                    ? SubfolderFor(folder, item.GetBaseItemKind() == BaseItemKind.Series ? ShowFolderNames : MovieFolderNames)
+                    : folder;
+
+                wanted[Path.Combine(destination, Path.GetFileName(source))] = source;
             }
         }
 
@@ -150,6 +158,19 @@ public class SeasonLinker
 
         SaveRecord(recordPath, record);
         return changed;
+    }
+
+    private static string SubfolderFor(string folder, string[] names)
+    {
+        try
+        {
+            return Directory.EnumerateDirectories(folder)
+                .FirstOrDefault(d => names.Contains(Path.GetFileName(d), StringComparer.OrdinalIgnoreCase)) ?? folder;
+        }
+        catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+        {
+            return folder;
+        }
     }
 
     private static BaseItemKind[] KindsFor(VirtualFolderInfo library)
