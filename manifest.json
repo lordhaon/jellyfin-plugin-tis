@@ -9,6 +9,14 @@
     "imageUrl": "",
     "versions": [
       {
+        "version": "1.1.0.0",
+        "changelog": "Tag a movie or show in another library to show it in a seasonal library",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/lordhaon/jellyfin-plugin-tis/releases/download/v1.1.0/tis_1.1.0.0.zip",
+        "checksum": "8ca4700bc221434568693613b7501c70",
+        "timestamp": "2026-10-11T14:28:09Z"
+      },
+      {
         "version": "1.0.0.0",
         "changelog": "First release",
         "targetAbi": "12.0.0.0",
