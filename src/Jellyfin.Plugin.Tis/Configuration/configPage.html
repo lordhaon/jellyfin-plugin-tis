@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>TIS</title>
+</head>
+<body>
+    <div id="TisConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-select,emby-button">
+        <div data-role="content">
+            <div class="content-primary">
+                <h2 class="sectionTitle">TIS</h2>
+                <p>Make a library for each season's folder under <b>Dashboard → Libraries</b>, then add it below with the dates it should be shown.
+                    Outside those dates the library is hidden from everyone. Libraries that are not listed here are left alone.</p>
+
+                <form id="TisConfigForm">
+                    <div id="TisSeasons"></div>
+                    <button is="emby-button" type="button" id="TisAddSeason" class="raised emby-button" style="margin-bottom:1.5em;">
+                        <span>Add season</span>
+                    </button>
+
+                    <div>
+                        <button is="emby-button" type="submit" class="raised button-submit block emby-button">
+                            <span>Save</span>
+                        </button>
+                    </div>
+                    <div class="fieldDescription" style="margin-top:1em;">Saving applies the dates straight away. After that they are checked just after midnight and when the server starts.</div>
+                </form>
+            </div>
+        </div>
+        <script type="text/javascript">
+            (function () {
+                var pluginId = '78a1b40d-66ab-4e61-a42d-62d92f23df0b';
+                var page = document.querySelector('#TisConfigPage');
+                var list = page.querySelector('#TisSeasons');
+                var months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+                var libraries = [];
+
+                function escapeHtml(text) {
+                    var div = document.createElement('div');
+                    div.textContent = text == null ? '' : String(text);
+                    return div.innerHTML.replace(/"/g, '&quot;');
+                }
+
+                function monthSelect(key, label) {
+                    var options = months.map(function (name, i) {
+                        return '<option value="' + (i + 1) + '">' + name + '</option>';
+                    }).join('');
+                    return '<div class="selectContainer" style="flex:2;min-width:9em;"><select is="emby-select" data-key="' + key + '" label="' + label + '">' + options + '</select></div>';
+                }
+
+                function dayInput(key, label) {
+                    return '<div class="inputContainer" style="flex:1;min-width:5em;"><input is="emby-input" type="number" min="1" max="31" data-key="' + key + '" label="' + label + '" /></div>';
+                }
+
+                function addRow(season) {
+                    var libraryOptions = '<option value="">Choose a library</option>' + libraries.map(function (l) {
+                        return '<option value="' + escapeHtml(l.ItemId) + '">' + escapeHtml(l.Name) + '</option>';
+                    }).join('');
+
+                    // The saved library has been deleted: keep the id so saving doesn't silently drop it.
+                    if (season.LibraryId && !libraries.some(function (l) { return l.ItemId === season.LibraryId; })) {
+                        libraryOptions += '<option value="' + escapeHtml(season.LibraryId) + '">(missing library)</option>';
+                    }
+
+                    var row = document.createElement('div');
+                    row.className = 'tisSeason';
+                    row.style.cssText = 'border:1px solid rgba(128,128,128,.4);border-radius:6px;padding:1em;margin-bottom:1em;';
+                    row.innerHTML =
+                        '<div class="inputContainer"><input is="emby-input" type="text" data-key="Name" label="Season name" placeholder="Halloween" /></div>' +
+                        '<div class="selectContainer"><select is="emby-select" data-key="LibraryId" label="Library">' + libraryOptions + '</select></div>' +
+                        '<div style="display:flex;flex-wrap:wrap;gap:1em;">' +
+                            monthSelect('StartMonth', 'Shown from') + dayInput('StartDay', 'Day') +
+                            monthSelect('EndMonth', 'Until the end of') + dayInput('EndDay', 'Day') +
+                        '</div>' +
+                        '<button is="emby-button" type="button" class="raised emby-button tisRemove"><span>Remove</span></button>';
+
+                    row.querySelector('[data-key="Name"]').value = season.Name || '';
+                    row.querySelector('[data-key="LibraryId"]').value = season.LibraryId || '';
+                    row.querySelector('[data-key="StartMonth"]').value = season.StartMonth || 1;
+                    row.querySelector('[data-key="StartDay"]').value = season.StartDay || 1;
+                    row.querySelector('[data-key="EndMonth"]').value = season.EndMonth || 12;
+                    row.querySelector('[data-key="EndDay"]').value = season.EndDay || 31;
+                    row.querySelector('.tisRemove').addEventListener('click', function () { row.remove(); });
+
+                    list.appendChild(row);
+                }
+
+                function day(value) {
+                    var n = parseInt(value, 10);
+                    return isNaN(n) ? 1 : Math.min(31, Math.max(1, n));
+                }
+
+                function readSeasons() {
+                    var seasons = [];
+                    list.querySelectorAll('.tisSeason').forEach(function (row) {
+                        var get = function (key) { return row.querySelector('[data-key="' + key + '"]').value; };
+                        var libraryId = get('LibraryId');
+                        if (!libraryId) {
+                            return;
+                        }
+
+                        seasons.push({
+                            Name: get('Name').trim(),
+                            LibraryId: libraryId,
+                            StartMonth: parseInt(get('StartMonth'), 10),
+                            StartDay: day(get('StartDay')),
+                            EndMonth: parseInt(get('EndMonth'), 10),
+                            EndDay: day(get('EndDay'))
+                        });
+                    });
+                    return seasons;
+                }
+
+                page.querySelector('#TisAddSeason').addEventListener('click', function () {
+                    addRow({});
+                });
+
+                page.addEventListener('pageshow', function () {
+                    Dashboard.showLoadingMsg();
+                    Promise.all([ApiClient.getVirtualFolders(), ApiClient.getPluginConfiguration(pluginId)]).then(function (results) {
+                        libraries = results[0] || [];
+                        list.innerHTML = '';
+                        (results[1].Seasons || []).forEach(addRow);
+                        Dashboard.hideLoadingMsg();
+                    });
+                });
+
+                page.querySelector('#TisConfigForm').addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                        config.Seasons = readSeasons();
+                        return ApiClient.updatePluginConfiguration(pluginId, config);
+                    }).then(function (result) {
+                        Dashboard.processPluginConfigurationUpdateResult(result);
+                    });
+                    return false;
+                });
+            })();
+        </script>
+    </div>
+</body>
+</html>

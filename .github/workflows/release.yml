@@ -1,0 +1,79 @@
+name: Release
+
+# Push a tag like v1.0.0 to build the plugin, publish a GitHub release,
+# and add the new version to manifest.json so Jellyfin sees the update.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Work out version
+        id: v
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          SEMVER="${TAG#v}"
+          IFS='.' read -r A B C D <<< "$SEMVER"
+          VERSION="${A:-0}.${B:-0}.${C:-0}.${D:-0}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          # actions/checkout replaces the annotated tag with a lightweight one; refetch it to get the tag message.
+          git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
+          CHANGELOG="$(git tag -l --format='%(contents)' "$TAG" | sed '/^-----BEGIN PGP/,$d')"
+          [ -z "$CHANGELOG" ] && CHANGELOG="Release $TAG"
+          {
+            echo "changelog<<EOF"
+            echo "$CHANGELOG"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        run: >
+          dotnet build src/Jellyfin.Plugin.Tis/Jellyfin.Plugin.Tis.csproj -c Release -o out
+          /p:Version=${{ steps.v.outputs.version }}
+          /p:AssemblyVersion=${{ steps.v.outputs.version }}
+          /p:FileVersion=${{ steps.v.outputs.version }}
+
+      - name: Package
+        id: pkg
+        run: |
+          ZIP="tis_${{ steps.v.outputs.version }}.zip"
+          (cd out && zip -j "../$ZIP" Jellyfin.Plugin.Tis.dll)
+          echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
+          echo "md5=$(md5sum "$ZIP" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.pkg.outputs.zip }}
+          body: ${{ steps.v.outputs.changelog }}
+
+      - name: Update manifest.json on the default branch
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          VERSION: ${{ steps.v.outputs.version }}
+          TAG: ${{ steps.v.outputs.tag }}
+          CHECKSUM: ${{ steps.pkg.outputs.md5 }}
+          CHANGELOG: ${{ steps.v.outputs.changelog }}
+        run: |
+          git fetch origin "$DEFAULT_BRANCH"
+          git checkout "$DEFAULT_BRANCH"
+          python3 scripts/update_manifest.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add manifest.json
+          git commit -m "Add $TAG to manifest" || echo "manifest unchanged"
+          git push origin "$DEFAULT_BRANCH"

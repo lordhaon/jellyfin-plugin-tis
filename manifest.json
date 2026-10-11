@@ -1,0 +1,12 @@
+[
+  {
+    "guid": "78a1b40d-66ab-4e61-a42d-62d92f23df0b",
+    "name": "TIS - Titles In Season",
+    "overview": "Show a library only during its season.",
+    "description": "Shows a library only during the part of the year it belongs to, e.g. Halloween movies in October and Christmas movies in December, and hides it for the rest of the year.",
+    "owner": "lordhaon",
+    "category": "General",
+    "imageUrl": "",
+    "versions": []
+  }
+]
