@@ -7,6 +7,7 @@ using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.Tis.Configuration;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Model.Entities;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.Tis.Seasons;
@@ -51,24 +52,26 @@ public class SeasonLinker
             return false;
         }
 
-        var libraryRoots = _libraryManager.GetVirtualFolders()
-            .SelectMany(f => f.Locations ?? Array.Empty<string>())
-            .Select(TrimSeparator)
-            .ToHashSet(StringComparer.Ordinal);
+        // The media folders come from the library's settings. CollectionFolder.PhysicalLocations is no use here:
+        // it starts with the library's own definition folder under /config/root.
+        var libraries = _libraryManager.GetVirtualFolders();
 
         // Items already inside a season folder (linked copies included) are never linked again.
         var seasonFolders = new List<string>();
-        var targets = new List<(Season Season, CollectionFolder Library, string Folder)>();
+        var targets = new List<(Season Season, VirtualFolderInfo Library, string Folder)>();
         foreach (var season in seasons)
         {
-            if (!Guid.TryParse(season.LibraryId, out var id) || _libraryManager.GetItemById(id) is not CollectionFolder library)
+            var library = Guid.TryParse(season.LibraryId, out var id)
+                ? libraries.FirstOrDefault(l => Guid.TryParse(l.ItemId, out var libraryId) && libraryId == id)
+                : null;
+            var locations = library?.Locations;
+            if (library == null || locations == null || locations.Length == 0)
             {
                 continue;
             }
 
-            var locations = library.PhysicalLocations;
             seasonFolders.AddRange(locations.Select(TrimSeparator));
-            if (!string.IsNullOrWhiteSpace(season.Tag) && locations.Length > 0)
+            if (!string.IsNullOrWhiteSpace(season.Tag))
             {
                 targets.Add((season, library, TrimSeparator(locations[0])));
             }
@@ -86,7 +89,7 @@ public class SeasonLinker
 
             foreach (var item in _libraryManager.GetItemList(query))
             {
-                var source = SourceFor(item, libraryRoots);
+                var source = SourceFor(item);
                 if (source == null || seasonFolders.Any(f => IsUnder(source, f)))
                 {
                     continue;
@@ -149,18 +152,18 @@ public class SeasonLinker
         return changed;
     }
 
-    private static BaseItemKind[] KindsFor(CollectionFolder library)
+    private static BaseItemKind[] KindsFor(VirtualFolderInfo library)
     {
         return library.CollectionType switch
         {
-            CollectionType.movies => new[] { BaseItemKind.Movie },
-            CollectionType.tvshows => new[] { BaseItemKind.Series },
+            CollectionTypeOptions.movies => new[] { BaseItemKind.Movie },
+            CollectionTypeOptions.tvshows => new[] { BaseItemKind.Series },
             _ => new[] { BaseItemKind.Movie, BaseItemKind.Series }
         };
     }
 
-    // A show or a movie in its own folder is linked as the folder; a movie sitting loose in a library root as the file.
-    private static string? SourceFor(BaseItem item, HashSet<string> libraryRoots)
+    // A show or a movie in its own folder is linked as the folder; a movie that shares its folder with other movies as the file.
+    private static string? SourceFor(BaseItem item)
     {
         if (string.IsNullOrEmpty(item.Path))
         {
@@ -173,7 +176,7 @@ public class SeasonLinker
         }
 
         var parent = Path.GetDirectoryName(item.Path);
-        return string.IsNullOrEmpty(parent) || libraryRoots.Contains(TrimSeparator(parent)) ? item.Path : parent;
+        return item.IsInMixedFolder || string.IsNullOrEmpty(parent) ? item.Path : parent;
     }
 
     private bool RemoveLink(string link)
