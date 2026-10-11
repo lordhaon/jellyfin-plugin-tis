@@ -9,6 +9,14 @@
     "imageUrl": "",
     "versions": [
       {
+        "version": "1.3.0.0",
+        "changelog": "Linked movies and shows now get the same metadata and artwork as the original, and shows are recognised in mixed libraries",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/lordhaon/jellyfin-plugin-tis/releases/download/v1.3.0/tis_1.3.0.0.zip",
+        "checksum": "5fa8938941b1d06e53bb5054e823c9d7",
+        "timestamp": "2026-10-11T16:30:28Z"
+      },
+      {
         "version": "1.2.0.0",
         "changelog": "A season with no library gets one made for it, holding only the tagged items",
         "targetAbi": "12.0.0.0",
